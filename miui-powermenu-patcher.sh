@@ -16,7 +16,7 @@ BIN_UNZIP=0
 if [ "$BIN_UNZIP" == 0 ]; then
     # line where embedded file code start
     echo "Extracting environment..."
-    START_LINE=371
+    START_LINE=379
     NEW_TAIL="-n"
     # compatibility workarround with older version of tail
     busybox tail $NEW_TAIL +1 "$0" > /dev/null 2> /dev/null || NEW_TAIL=""
@@ -38,6 +38,12 @@ patch_msg() {
 }
 
 ## decompile
+if [ ! -f /data/app/per.pqy.apktool*/*.apk ]; then
+    mkdir -p /data/data/per.pqy.apktool/apktool/openjdk/lib
+    cp -f openjdk/lib/ld.so /data/data/per.pqy.apktool/apktool/openjdk/lib/ld.so
+    chmod -R 755 /data/data/per.pqy.apktool
+fi
+
 cp -f /system/framework/android.policy.jar android.policy.jar
 
 export LD_PRELOAD=
@@ -129,6 +135,8 @@ rm -f ${SMALIFILE}.bak
 
 ## recompile
 run_apktool b -a $PATCHDIR/aapt6.0 android.policy.jar.out
+
+[ -f /data/app/per.pqy.apktool*/*.apk ] || rm -rf /data/data/per.pqy.apktool
 
 cp -f /system/media/theme/default/powermenu powermenu
 

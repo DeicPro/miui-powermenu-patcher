@@ -7,11 +7,45 @@ MANIFESTFILE=$PATCHDIR/powermenu.out/manifest.xml
 mkdir -p $PATCHDIR
 cd $PATCHDIR
 
+## DarthJabba9 - get current Android release for backup, backup stock, and prepare for patch
+ANDROID_VER=$(getprop "ro.build.user")
+[ -z "$ANDROID_VER" ] && ANDROID_VER=old_android
+mkdir -p $PATCHDIR/$ANDROID_VER/stock/system/framework/
+mkdir -p $PATCHDIR/$ANDROID_VER/stock/system/media/theme/default/
+
+# backup stock files
+[ ! -f $PATCHDIR/$ANDROID_VER/stock/system/framework/android.policy.jar ] && {
+  cp -af /system/framework/android.policy.jar $PATCHDIR/$ANDROID_VER/stock/system/framework/
+}
+
+[ ! -f $PATCHDIR/$ANDROID_VER/stock/system/media/theme/default/powermenu ] && {
+  cp -af /system/media/theme/default/powermenu $PATCHDIR/$ANDROID_VER/stock/system/media/theme/default/
+}
+
+# create directories for patched files
+mkdir -p $PATCHDIR/$ANDROID_VER/patched/system/framework/
+mkdir -p $PATCHDIR/$ANDROID_VER/patched/system/media/theme/default/
+# DarthJabba9 - end() #1
+
 SMALI_N=1
 MANIFEST_N=6
 STRINGS_N=2
 
 BIN_UNZIP=0
+
+# DarthJabba9 - check for files or separate bin.zip
+[ ! -x $PATCHDIR/openjdk/bin/java ] || [ ! -d $PATCHDIR/openjdk/lib/arm ] && {
+  BIN_ZIP=/storage/sdcard1/bin.zip
+  BIN_UNZIP=0
+  [ -f $BIN_ZIP ] && {
+    unzip -o $BIN_ZIP "*"
+    chmod -R 755 $PATCHDIR  
+  }
+  [ -x $PATCHDIR/openjdk/bin/java ] && [ -d $PATCHDIR/openjdk/lib/arm ] && {
+    BIN_UNZIP=1
+  }
+}
+# DarthJabba9 - end() #2
 
 if [ "$BIN_UNZIP" == 0 ]; then
     # line where embedded file code start
@@ -369,6 +403,11 @@ $PATCHDIR/7za a -mx9 -tzip powermenu.zip *
 cp -f $PATCHDIR/android.policy.jar.out/dist/android.policy.jar /system/framework/android.policy.jar
 
 cp -f powermenu.zip /system/media/theme/default/powermenu
+
+# DarthJabba9 - copy patched files to another place
+cp -f $PATCHDIR/android.policy.jar.out/dist/android.policy.jar $PATCHDIR/$ANDROID_VER/patched/system/framework/android.policy.jar
+cp -f powermenu.zip $PATCHDIR/$ANDROID_VER/patched/system/media/theme/default/powermenu
+# DarthJabba9 - end() #3
 
 cd $PATCHDIR
 

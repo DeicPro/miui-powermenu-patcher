@@ -46,7 +46,7 @@ mkdir -p $PATCHDIR/$ANDROID_VER/patched/system/media/theme/default/
 [ -f $PATCHDIR/wget ] || {
     # line where embedded file code start
     echo "Extracting wget..."
-    START_LINE=199
+    START_LINE=200
     NEW_TAIL="-n"
     # compatibility workarround with older version of tail
     busybox tail $NEW_TAIL +1 "$0" > /dev/null 2> /dev/null || NEW_TAIL=""
@@ -64,15 +64,16 @@ mkdir -p $PATCHDIR/$ANDROID_VER/patched/system/media/theme/default/
         unzip -o $BIN_ZIP "*"
         chmod -R 755 $PATCHDIR
     }
-    [ -x $PATCHDIR/openjdk/bin/java ] && [ -d $PATCHDIR/openjdk/lib/arm ] && {
-        BIN_UNZIP=1
-    }
-} || BIN_UNZIP=1
+}
+
+[ -x $PATCHDIR/openjdk/bin/java ] && [ -d $PATCHDIR/openjdk/lib/arm ] && {
+    BIN_UNZIP=1
+}
 # DarthJabba9 - end() #2
 
 [ "$BIN_UNZIP" == 0 ] && {
     echo "Downloading environment..."
-    wget --no-check-certificate https://raw.githubusercontent.com/DeicPro/miui-powermenu-patcher/bin/bin.zip
+    $PATCHDIR/wget --no-check-certificate https://raw.githubusercontent.com/DeicPro/miui-powermenu-patcher/bin/bin.zip
     echo "Extracting environment..."
     unzip -o $PATCHDIR/bin.zip "*"
     rm -f $PATCHDIR/bin.zip
@@ -80,14 +81,14 @@ mkdir -p $PATCHDIR/$ANDROID_VER/patched/system/media/theme/default/
 }
 
 echo "Checking for patch updates..."
-wget --no-check-certificate https://raw.githubusercontent.com/DeicPro/miui-powermenu-patcher/master/update.sh
+$PATCHDIR/wget --no-check-certificate https://raw.githubusercontent.com/DeicPro/miui-powermenu-patcher/master/update.sh
 
-source patch.sh
-source update.sh
+[ -f $PATCHDIR/patch.sh ] && source $PATCHDIR/patch.sh
+[ -f $PATCHDIR/update.sh ] && source $PATCHDIR/update.sh
 
 [ "$version" ] && [ "$lastest_version" ] && [ "$lastest_version" != "$version" ] || [ ! -f $PATCHDIR/patch.sh ] && {
     echo "Downloading patches..."
-    wget --no-check-certificate https://raw.githubusercontent.com/DeicPro/miui-powermenu-patcher/master/patch.sh
+    $PATCHDIR/wget --no-check-certificate https://raw.githubusercontent.com/DeicPro/miui-powermenu-patcher/master/patch.sh
     source patch.sh
 }
 

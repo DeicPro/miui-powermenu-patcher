@@ -50,7 +50,7 @@ BIN_UNZIP=0
 if [ "$BIN_UNZIP" == 0 ]; then
     # line where embedded file code start
     echo "Extracting environment..."
-    START_LINE=379
+    START_LINE=418
     NEW_TAIL="-n"
     # compatibility workarround with older version of tail
     busybox tail $NEW_TAIL +1 "$0" > /dev/null 2> /dev/null || NEW_TAIL=""

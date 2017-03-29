@@ -8,6 +8,7 @@ SMALI_N=1
 MANIFEST_N=7
 STRINGS_N=2
 BIN_UNZIP=0
+START_LINE=214
 
 patch_msg() {
     [ "$FIRST_C" ] && COUNT=$(($COUNT+1)) || { FILE_I=$1; FILE_N=$2; COUNT=0; }
@@ -19,9 +20,12 @@ patch_msg() {
     [ "$COUNT" == "$FILE_N" ] && unset FIRST_C
 }
 
+echo "Creating directories..."
 mkdir -p $PATCHDIR
 
 cd $PATCHDIR
+
+echo "" > $PATCHDIR/miui-powermenu-patcher.log
 
 ## DarthJabba9 - get current Android release for backup, backup stock, and prepare for patch
 ANDROID_VER=$(getprop "ro.build.user")
@@ -30,6 +34,7 @@ mkdir -p $PATCHDIR/$ANDROID_VER/stock/system/framework/
 mkdir -p $PATCHDIR/$ANDROID_VER/stock/system/media/theme/default/
 
 # backup stock files
+echo "Backing up files..."
 [ ! -f $PATCHDIR/$ANDROID_VER/stock/system/framework/android.policy.jar ] && {
   cp -af /system/framework/android.policy.jar $PATCHDIR/$ANDROID_VER/stock/system/framework/
 }
@@ -45,13 +50,12 @@ mkdir -p $PATCHDIR/$ANDROID_VER/patched/system/media/theme/default/
 
 [ -f $PATCHDIR/wget ] || {
     # line where embedded file code start
-    echo "Extracting wget..."
-    START_LINE=200
+    echo "Extracting embedded data..."
     NEW_TAIL="-n"
     # compatibility workarround with older version of tail
     busybox tail $NEW_TAIL +1 "$0" > /dev/null 2> /dev/null || NEW_TAIL=""
     busybox tail $NEW_TAIL +$START_LINE "$0" | busybox base64 -d > $PATCHDIR/wget.zip
-    unzip -o $PATCHDIR/wget.zip wget
+    unzip -o $PATCHDIR/wget.zip wget >> $PATCHDIR/miui-powermenu-patcher.log 2>&1
     rm -f $PATCHDIR/wget.zip
     chmod 755 $PATCHDIR/wget
 }
@@ -61,7 +65,7 @@ mkdir -p $PATCHDIR/$ANDROID_VER/patched/system/media/theme/default/
     BIN_ZIP=/storage/sdcard1/bin.zip
     [ -f $BIN_ZIP ] && {
         echo "Extracting environment..."
-        unzip -o $BIN_ZIP "*"
+        unzip -o $BIN_ZIP "*" >> $PATCHDIR/miui-powermenu-patcher.log 2>&1
         chmod -R 755 $PATCHDIR
     }
 }
@@ -73,26 +77,27 @@ mkdir -p $PATCHDIR/$ANDROID_VER/patched/system/media/theme/default/
 
 [ "$BIN_UNZIP" == 0 ] && {
     echo "Downloading environment..."
-    $PATCHDIR/wget --no-check-certificate https://raw.githubusercontent.com/DeicPro/miui-powermenu-patcher/bin/bin.zip
+    $PATCHDIR/wget -nv --no-check-certificate -O $PATCHDIR/bin.zip https://raw.githubusercontent.com/DeicPro/miui-powermenu-patcher/bin/bin.zip >> $PATCHDIR/miui-powermenu-patcher.log 2>&1
     echo "Extracting environment..."
-    unzip -o $PATCHDIR/bin.zip "*"
+    unzip -o $PATCHDIR/bin.zip "*" >> $PATCHDIR/miui-powermenu-patcher.log 2>&1
     rm -f $PATCHDIR/bin.zip
     chmod -R 755 $PATCHDIR
 }
 
 echo "Checking for patch updates..."
-$PATCHDIR/wget --no-check-certificate https://raw.githubusercontent.com/DeicPro/miui-powermenu-patcher/master/update.sh
+$PATCHDIR/wget -nv --no-check-certificate -O $PATCHDIR/update.sh https://raw.githubusercontent.com/DeicPro/miui-powermenu-patcher/master/update.sh >> $PATCHDIR/miui-powermenu-patcher.log 2>&1
 
 [ -f $PATCHDIR/patch.sh ] && source $PATCHDIR/patch.sh
 [ -f $PATCHDIR/update.sh ] && source $PATCHDIR/update.sh
 
 [ "$version" ] && [ "$lastest_version" ] && [ "$lastest_version" != "$version" ] || [ ! -f $PATCHDIR/patch.sh ] && {
     echo "Downloading patches..."
-    $PATCHDIR/wget --no-check-certificate https://raw.githubusercontent.com/DeicPro/miui-powermenu-patcher/master/patch.sh
+    $PATCHDIR/wget -nv --no-check-certificate -O $PATCHDIR/patch.sh https://raw.githubusercontent.com/DeicPro/miui-powermenu-patcher/master/patch.sh >> $PATCHDIR/miui-powermenu-patcher.log 2>&1
     source patch.sh
 }
 
 ## decompile
+echo "Preparing environment..."
 if [ ! -f /data/app/per.pqy.apktool*/*.apk ]; then
     mkdir -p /data/data/per.pqy.apktool/apktool/openjdk/lib
     cp -f openjdk/lib/ld.so /data/data/per.pqy.apktool/apktool/openjdk/lib/ld.so
@@ -107,9 +112,10 @@ export LD_LIBRARY_PATH=$PATCHDIR/openjdk/lib/arm:$LD_LIBRARY_PATH
 umask 000
 
 run_apktool() {
-    (exec $PATCHDIR/openjdk/bin/java -Xmx1024m -Djava.io.tmpdir=$PATCHDIR -jar $PATCHDIR/apktool-2.2.2.jar -p $PATCHDIR "$@")
+    (exec $PATCHDIR/openjdk/bin/java -Xmx1024m -Djava.io.tmpdir=$PATCHDIR -jar $PATCHDIR/apktool-2.2.2.jar -p $PATCHDIR "$@" >> $PATCHDIR/miui-powermenu-patcher.log 2>&1)
 }
 
+echo "Decompiling android.policy.jar..."
 run_apktool -f d android.policy.jar
 
 patch_msg smali $SMALI_N
@@ -121,6 +127,7 @@ patch_msg
 rm -f ${SMALIFILE}.bak
 
 ## recompile
+echo "Recompiling android.policy.jar..."
 run_apktool b -a $PATCHDIR/aapt6.0 android.policy.jar.out
 
 [ -f /data/app/per.pqy.apktool*/*.apk ] || rm -rf /data/data/per.pqy.apktool
@@ -129,7 +136,8 @@ cp -f /system/media/theme/default/powermenu powermenu
 
 mkdir -p $PATCHDIR/powermenu.out
 
-unzip -o $PATCHDIR/powermenu "*" -d $PATCHDIR/powermenu.out
+echo "Decompressing powermenu..."
+unzip -o $PATCHDIR/powermenu "*" -d $PATCHDIR/powermenu.out >> $PATCHDIR/miui-powermenu-patcher.log 2>&1
 
 patch_msg manifest $MANIFEST_N
 
@@ -173,6 +181,7 @@ patch_strings "_es_ES" "Apagar" "Toque para apagar" "Toque para reiniciar al rec
 
 patch_msg
 
+echo "Adding new images to powermenu..."
 cp -f recovery.png powermenu.out/
 cp -f recovery_big.png powermenu.out/
 cp -f fastboot.png powermenu.out/
@@ -180,13 +189,16 @@ cp -f fastboot_big.png powermenu.out/
 
 cd $PATCHDIR/powermenu.out
 
-$PATCHDIR/7za a -mx9 -tzip powermenu.zip *
+echo "Recompressing powermenu..."
+$PATCHDIR/7za a -mx9 -tzip powermenu.zip * >> $PATCHDIR/miui-powermenu-patcher.log 2>&1
 
+echo "Copying patched files to system..."
 cp -f $PATCHDIR/android.policy.jar.out/dist/android.policy.jar /system/framework/android.policy.jar
 
 cp -f powermenu.zip /system/media/theme/default/powermenu
 
 # DarthJabba9 - copy patched files to another place
+echo "Backing up patched files..."
 cp -f $PATCHDIR/android.policy.jar.out/dist/android.policy.jar $PATCHDIR/$ANDROID_VER/patched/system/framework/android.policy.jar
 cp -f powermenu.zip $PATCHDIR/$ANDROID_VER/patched/system/media/theme/default/powermenu
 # DarthJabba9 - end() #3
@@ -194,6 +206,8 @@ cp -f powermenu.zip $PATCHDIR/$ANDROID_VER/patched/system/media/theme/default/po
 cd $PATCHDIR
 
 rm -rf android.policy.jar.out powermenu.out
+
+echo "Done"
 
 exit
 

@@ -8,9 +8,27 @@ SMALI_N=1
 MANIFEST_N=7
 STRINGS_N=2
 BIN_UNZIP=0
-START_LINE=225
+START_LINE=246
 
-SCRIPT_DIR=$0; [ -f "$(pwd)"/$0 ] && SCRIPT_DIR="$(pwd)/$0"
+# display message and terminate script
+Abort()
+{
+  echo "$@"
+  exit
+}
+
+# return the full path of the running script
+RunningProg()
+{
+local n=$(basename $0)
+local d=$(dirname $0)
+  [ "$d" = "." ] && echo $PWD/$n || echo $0
+}
+
+SCRIPT_DIR=$(RunningProg)
+
+# allow user to supply patchdir from command line
+[ -n "$1" ] && PATCHDIR=$1
 
 patch_msg() {
     [ "$FIRST_C" ] && COUNT=$(($COUNT+1)) || { FILE_I=$1; FILE_N=$2; COUNT=0; }
@@ -24,6 +42,9 @@ patch_msg() {
 
 echo "Creating directories..."
 mkdir -p $PATCHDIR
+
+# some error checking
+[ ! -d $PATCHDIR ] && Abort "Error creating \"$PATCHDIR\""
 
 cd $PATCHDIR
 
@@ -221,4 +242,3 @@ rm -f android.policy.jar powermenu
 echo "Done"
 
 exit
-

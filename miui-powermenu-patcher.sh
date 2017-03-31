@@ -51,7 +51,7 @@ cd $PATCHDIR
 echo "" > $PATCHDIR/miui-powermenu-patcher.log
 
 ## DarthJabba9 - get current Android release for backup, backup stock, and prepare for patch
-ANDROID_VER=$(getprop "ro.build.user")
+ANDROID_VER=$(getprop "ro.build.version.incremental")
 [ -z "$ANDROID_VER" ] && ANDROID_VER=old_android
 mkdir -p $PATCHDIR/$ANDROID_VER/stock/system/framework/
 mkdir -p $PATCHDIR/$ANDROID_VER/stock/system/media/theme/default/

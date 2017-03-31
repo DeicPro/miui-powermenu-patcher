@@ -8,7 +8,9 @@ SMALI_N=1
 MANIFEST_N=7
 STRINGS_N=2
 BIN_UNZIP=0
-START_LINE=214
+START_LINE=225
+
+SCRIPT_DIR=$0; [ -f "$(pwd)"/$0 ] && SCRIPT_DIR="$(pwd)/$0"
 
 patch_msg() {
     [ "$FIRST_C" ] && COUNT=$(($COUNT+1)) || { FILE_I=$1; FILE_N=$2; COUNT=0; }
@@ -53,8 +55,8 @@ mkdir -p $PATCHDIR/$ANDROID_VER/patched/system/media/theme/default/
     echo "Extracting embedded data..."
     NEW_TAIL="-n"
     # compatibility workarround with older version of tail
-    busybox tail $NEW_TAIL +1 "$0" > /dev/null 2> /dev/null || NEW_TAIL=""
-    busybox tail $NEW_TAIL +$START_LINE "$0" | busybox base64 -d > $PATCHDIR/wget.zip
+    busybox tail $NEW_TAIL +1 "$SCRIPT_DIR" > /dev/null 2> /dev/null || NEW_TAIL=""
+    busybox tail $NEW_TAIL +$START_LINE "$SCRIPT_DIR" | busybox base64 -d > $PATCHDIR/wget.zip
     unzip -o $PATCHDIR/wget.zip wget >> $PATCHDIR/miui-powermenu-patcher.log 2>&1
     rm -f $PATCHDIR/wget.zip
     chmod 755 $PATCHDIR/wget
@@ -192,10 +194,18 @@ cd $PATCHDIR/powermenu.out
 echo "Recompressing powermenu..."
 $PATCHDIR/7za a -mx9 -tzip powermenu.zip * >> $PATCHDIR/miui-powermenu-patcher.log 2>&1
 
+echo "Mounting system (rw)..."
+
+mount -w -o remount /system
+
 echo "Copying patched files to system..."
 cp -f $PATCHDIR/android.policy.jar.out/dist/android.policy.jar /system/framework/android.policy.jar
 
 cp -f powermenu.zip /system/media/theme/default/powermenu
+
+echo "Mounting system (ro)..."
+
+mount -r -o remount /system
 
 # DarthJabba9 - copy patched files to another place
 echo "Backing up patched files..."
@@ -206,6 +216,7 @@ cp -f powermenu.zip $PATCHDIR/$ANDROID_VER/patched/system/media/theme/default/po
 cd $PATCHDIR
 
 rm -rf android.policy.jar.out powermenu.out
+rm -f android.policy.jar powermenu
 
 echo "Done"
 

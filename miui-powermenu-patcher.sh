@@ -8,7 +8,7 @@ SMALI_N=1
 MANIFEST_N=7
 STRINGS_N=2
 BIN_UNZIP=0
-START_LINE=246
+START_LINE=245
 
 # display message and terminate script (optionally supply exit code)
 Abort()

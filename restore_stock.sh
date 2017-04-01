@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# by xda@DarthJabba
+# by xda@DarthJabba9
 
 PATCHDIR=/data/miui-powermenu-patcher
 

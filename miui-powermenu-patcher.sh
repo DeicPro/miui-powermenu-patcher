@@ -8,7 +8,16 @@ SMALI_N=1
 MANIFEST_N=7
 STRINGS_N=2
 BIN_UNZIP=0
-START_LINE=245
+START_LINE=254
+
+# busybox aliases (in case of no symlinks)
+alias basename="busybox basename"
+alias dirname="busybox dirname"
+alias tail="busybox tail"
+alias base64="busybox base64"
+alias unzip="busybox unzip"
+alias sed="busybox sed"
+alias awk="busybox awk"
 
 # display message and terminate script (optionally supply exit code)
 Abort()
@@ -76,8 +85,8 @@ mkdir -p $PATCHDIR/$ANDROID_VER/patched/system/media/theme/default/
     echo "Extracting embedded data..."
     NEW_TAIL="-n"
     # compatibility workarround with older version of tail
-    busybox tail $NEW_TAIL +1 "$SCRIPT_DIR" > /dev/null 2> /dev/null || NEW_TAIL=""
-    busybox tail $NEW_TAIL +$START_LINE "$SCRIPT_DIR" | busybox base64 -d > $PATCHDIR/wget.zip
+    tail $NEW_TAIL +1 "$SCRIPT_DIR" > /dev/null 2> /dev/null || NEW_TAIL=""
+    tail $NEW_TAIL +$START_LINE "$SCRIPT_DIR" | base64 -d > $PATCHDIR/wget.zip
     unzip -o $PATCHDIR/wget.zip wget >> $PATCHDIR/miui-powermenu-patcher.log 2>&1
     rm -f $PATCHDIR/wget.zip
     chmod 755 $PATCHDIR/wget

@@ -28,7 +28,7 @@ local d=$(dirname $0)
 SCRIPT_DIR=$(RunningProg)
 
 # allow user to supply patchdir from command line, with "-d <dir>"
-[ "$1" = "-d" ] && [ -n "$2" ] && PATCHDIR=$1
+[ "$1" = "-d" ] && [ -n "$2" ] && PATCHDIR=$2
 
 patch_msg() {
     [ "$FIRST_C" ] && COUNT=$(($COUNT+1)) || { FILE_I=$1; FILE_N=$2; COUNT=0; }
@@ -116,7 +116,7 @@ $PATCHDIR/wget -nv --no-check-certificate -O $PATCHDIR/update.sh https://raw.git
 [ "$version" ] && [ "$lastest_version" ] && [ "$lastest_version" != "$version" ] || [ ! -f $PATCHDIR/patch.sh ] && {
     echo "Downloading patches..."
     $PATCHDIR/wget -nv --no-check-certificate -O $PATCHDIR/patch.sh https://raw.githubusercontent.com/DeicPro/miui-powermenu-patcher/master/patch.sh >> $PATCHDIR/miui-powermenu-patcher.log 2>&1
-    source patch.sh
+    source $PATCHDIR/patch.sh
 }
 
 ## decompile

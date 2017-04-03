@@ -8,7 +8,7 @@ SMALI_N=1
 MANIFEST_N=7
 STRINGS_N=2
 BIN_UNZIP=0
-START_LINE=254
+START_LINE=270
 
 # busybox aliases (in case of no symlinks)
 alias basename="busybox basename"
@@ -35,6 +35,22 @@ local d=$(dirname $0)
 }
 
 SCRIPT_DIR=$(RunningProg)
+
+# return location of embedded code + 1 - or zero if code not found
+FindEmbeddedCode()
+{
+ local CODE="#embedded file below"
+ local N=$(grep -n -x "$CODE" $SCRIPT_DIR)
+ [ -n "$N" ] && {
+    local n=${N%%:*} # strip everything from ":" onwards
+    local c=1 # increment count
+    echo $(( n + c ))
+ } || echo 0
+}
+
+# set START_LINE automatically if the embedded code is found
+tmp=$(FindEmbeddedCode)
+[ ! "$tmp" = "0" ] && START_LINE=$tmp
 
 # allow user to supply patchdir from command line, with "-d <dir>"
 [ "$1" = "-d" ] && [ -n "$2" ] && PATCHDIR=$1

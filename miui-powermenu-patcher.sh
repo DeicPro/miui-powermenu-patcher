@@ -4,28 +4,40 @@
 PATCHDIR=/data/miui-powermenu-patcher
 SMALIFILE=$PATCHDIR/android.policy.jar.out/smali/com/android/internal/policy/impl/MiuiGlobalActions\$1.smali
 MANIFESTFILE=$PATCHDIR/powermenu.out/manifest.xml
-mkdir -p $PATCHDIR
-cd $PATCHDIR
-
 SMALI_N=1
-MANIFEST_N=6
+MANIFEST_N=7
 STRINGS_N=2
-
 BIN_UNZIP=0
+START_LINE=254
 
-if [ "$BIN_UNZIP" == 0 ]; then
-    # line where embedded file code start
-    echo "Extracting environment..."
-    START_LINE=379
-    NEW_TAIL="-n"
-    # compatibility workarround with older version of tail
-    busybox tail $NEW_TAIL +1 "$0" > /dev/null 2> /dev/null || NEW_TAIL=""
-    busybox tail $NEW_TAIL +$START_LINE "$0" | busybox base64 -d > $PATCHDIR/bin.zip
-    unzip -o $PATCHDIR/bin.zip "*"
-    rm -f $PATCHDIR/bin.zip
-    chmod -R 755 $PATCHDIR
-    sed -i "s|BIN_UNZIP=0|BIN_UNZIP=1|" $0
-fi
+# busybox aliases (in case of no symlinks)
+alias basename="busybox basename"
+alias dirname="busybox dirname"
+alias tail="busybox tail"
+alias base64="busybox base64"
+alias unzip="busybox unzip"
+alias sed="busybox sed"
+alias awk="busybox awk"
+
+# display message and terminate script (optionally supply exit code)
+Abort()
+{
+  echo "$1"
+  exit $2
+}
+
+# return the full path of the running script
+RunningProg()
+{
+local n=$(basename $0)
+local d=$(dirname $0)
+  [ "$d" = "." ] && echo $PWD/$n || echo $0
+}
+
+SCRIPT_DIR=$(RunningProg)
+
+# allow user to supply patchdir from command line, with "-d <dir>"
+[ "$1" = "-d" ] && [ -n "$2" ] && PATCHDIR=$1
 
 patch_msg() {
     [ "$FIRST_C" ] && COUNT=$(($COUNT+1)) || { FILE_I=$1; FILE_N=$2; COUNT=0; }
@@ -37,7 +49,87 @@ patch_msg() {
     [ "$COUNT" == "$FILE_N" ] && unset FIRST_C
 }
 
+echo "Creating directories..."
+mkdir -p $PATCHDIR
+
+# some error checking
+[ ! -d $PATCHDIR ] && Abort "Error creating \"$PATCHDIR\"" "1"
+
+cd $PATCHDIR
+
+echo "" > $PATCHDIR/miui-powermenu-patcher.log
+
+## DarthJabba9 - get current Android release for backup, backup stock, and prepare for patch
+ANDROID_VER=$(getprop "ro.build.version.incremental")
+[ -z "$ANDROID_VER" ] && ANDROID_VER=old_android
+mkdir -p $PATCHDIR/$ANDROID_VER/stock/system/framework/
+mkdir -p $PATCHDIR/$ANDROID_VER/stock/system/media/theme/default/
+
+# backup stock files
+echo "Backing up files..."
+[ ! -f $PATCHDIR/$ANDROID_VER/stock/system/framework/android.policy.jar ] && {
+  cp -af /system/framework/android.policy.jar $PATCHDIR/$ANDROID_VER/stock/system/framework/
+}
+
+[ ! -f $PATCHDIR/$ANDROID_VER/stock/system/media/theme/default/powermenu ] && {
+  cp -af /system/media/theme/default/powermenu $PATCHDIR/$ANDROID_VER/stock/system/media/theme/default/
+}
+
+# create directories for patched files
+mkdir -p $PATCHDIR/$ANDROID_VER/patched/system/framework/
+mkdir -p $PATCHDIR/$ANDROID_VER/patched/system/media/theme/default/
+# DarthJabba9 - end() #1
+
+[ -f $PATCHDIR/wget ] || {
+    # line where embedded file code start
+    echo "Extracting embedded data..."
+    NEW_TAIL="-n"
+    # compatibility workarround with older version of tail
+    tail $NEW_TAIL +1 "$SCRIPT_DIR" > /dev/null 2> /dev/null || NEW_TAIL=""
+    tail $NEW_TAIL +$START_LINE "$SCRIPT_DIR" | base64 -d > $PATCHDIR/wget.zip
+    unzip -o $PATCHDIR/wget.zip wget >> $PATCHDIR/miui-powermenu-patcher.log 2>&1
+    rm -f $PATCHDIR/wget.zip
+    chmod 755 $PATCHDIR/wget
+}
+
+# DarthJabba9 - check for files or separate bin.zip
+[ ! -x $PATCHDIR/openjdk/bin/java ] || [ ! -d $PATCHDIR/openjdk/lib/arm ] && {
+    BIN_ZIP=/storage/sdcard1/bin.zip
+    [ -f $BIN_ZIP ] && {
+        echo "Extracting environment..."
+        unzip -o $BIN_ZIP "*" >> $PATCHDIR/miui-powermenu-patcher.log 2>&1
+        chmod -R 755 $PATCHDIR
+    }
+}
+
+[ -x $PATCHDIR/openjdk/bin/java ] && [ -d $PATCHDIR/openjdk/lib/arm ] && {
+    BIN_UNZIP=1
+}
+# DarthJabba9 - end() #2
+
+[ "$BIN_UNZIP" == 0 ] && {
+    echo "Downloading environment..."
+    $PATCHDIR/wget -nv --no-check-certificate -O $PATCHDIR/bin.zip https://raw.githubusercontent.com/DeicPro/miui-powermenu-patcher/bin/bin.zip >> $PATCHDIR/miui-powermenu-patcher.log 2>&1
+    echo "Extracting environment..."
+    unzip -o $PATCHDIR/bin.zip "*" >> $PATCHDIR/miui-powermenu-patcher.log 2>&1
+    rm -f $PATCHDIR/bin.zip
+    chmod -R 755 $PATCHDIR
+}
+
+echo "Checking for patch updates..."
+$PATCHDIR/wget -nv --no-check-certificate -O $PATCHDIR/update.sh https://raw.githubusercontent.com/DeicPro/miui-powermenu-patcher/master/update.sh >> $PATCHDIR/miui-powermenu-patcher.log 2>&1
+
+[ -f $PATCHDIR/patch.sh ] && source $PATCHDIR/patch.sh
+[ -f $PATCHDIR/update.sh ] && source $PATCHDIR/update.sh
+
+[ "$version" ] && [ "$lastest_version" ] && [ "$lastest_version" != "$version" ] || [ ! -f $PATCHDIR/patch.sh ] && {
+    echo "Downloading patches..."
+    $PATCHDIR/wget -nv --no-check-certificate -O $PATCHDIR/patch.sh https://raw.githubusercontent.com/DeicPro/miui-powermenu-patcher/master/patch.sh >> $PATCHDIR/miui-powermenu-patcher.log 2>&1
+    source patch.sh
+}
+
 ## decompile
+echo "Preparing environment..."
 if [ ! -f /data/app/per.pqy.apktool*/*.apk ]; then
     mkdir -p /data/data/per.pqy.apktool/apktool/openjdk/lib
     cp -f openjdk/lib/ld.so /data/data/per.pqy.apktool/apktool/openjdk/lib/ld.so
@@ -52,88 +144,22 @@ export LD_LIBRARY_PATH=$PATCHDIR/openjdk/lib/arm:$LD_LIBRARY_PATH
 umask 000
 
 run_apktool() {
-    (exec $PATCHDIR/openjdk/bin/java -Xmx1024m -Djava.io.tmpdir=$PATCHDIR -jar $PATCHDIR/apktool-2.2.2.jar -p $PATCHDIR "$@")
+    (exec $PATCHDIR/openjdk/bin/java -Xmx1024m -Djava.io.tmpdir=$PATCHDIR -jar $PATCHDIR/apktool-2.2.2.jar -p $PATCHDIR "$@" >> $PATCHDIR/miui-powermenu-patcher.log 2>&1)
 }
 
+echo "Decompiling android.policy.jar..."
 run_apktool -f d android.policy.jar
 
 patch_msg smali $SMALI_N
 
-DATA="    :cond_4
-    const-string v0, \"recovery\"
-
-    invoke-virtual {v0, p1}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
-
-    move-result v0
-
-    if-eqz v0, :cond_5
-
-    :try_start_1
-    # invokes: Lcom/android/internal/policy/impl/MiuiGlobalActions;->getPowerManager()Landroid/os/IPowerManager;
-    invoke-static {}, Lcom/android/internal/policy/impl/MiuiGlobalActions;->access\$100()Landroid/os/IPowerManager;
-
-    move-result-object v0
-
-    const/4 v1, 0x0
-
-    const-string v2, \"recovery\"
-
-    const/4 v3, 0x0
-
-    invoke-interface {v0, v1, v2, v3}, Landroid/os/IPowerManager;->reboot(ZLjava/lang/String;Z)V
-    :try_end_1
-    .catch Landroid/os/RemoteException; {:try_start_1 .. :try_end_1} :catch_1
-
-    goto :goto_0
-
-    :catch_1
-    move-exception v0
-
-    goto :goto_0
-
-    :cond_5
-    const-string v0, \"bootloader\"
-
-    invoke-virtual {v0, p1}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
-
-    move-result v0
-
-    if-eqz v0, :cond_6
-
-    :try_start_2
-    # invokes: Lcom/android/internal/policy/impl/MiuiGlobalActions;->getPowerManager()Landroid/os/IPowerManager;
-    invoke-static {}, Lcom/android/internal/policy/impl/MiuiGlobalActions;->access\$100()Landroid/os/IPowerManager;
-
-    move-result-object v0
-
-    const/4 v1, 0x0
-
-    const-string v2, \"bootloader\"
-
-    const/4 v3, 0x0
-
-    invoke-interface {v0, v1, v2, v3}, Landroid/os/IPowerManager;->reboot(ZLjava/lang/String;Z)V
-    :try_end_2
-    .catch Landroid/os/RemoteException; {:try_start_2 .. :try_end_2} :catch_2
-
-    goto :goto_0
-
-    :catch_2
-    move-exception v0
-
-    goto :goto_0
-
-    :cond_6"
-
-cp -f $SMALIFILE ${SMALIFILE}.bak
-
-awk -v r="$DATA" '{gsub(/    :cond_4/,r)}1' ${SMALIFILE}.bak > $SMALIFILE
+patch_smali
 
 patch_msg
 
 rm -f ${SMALIFILE}.bak
 
 ## recompile
+echo "Recompiling android.policy.jar..."
 run_apktool b -a $PATCHDIR/aapt6.0 android.policy.jar.out
 
 [ -f /data/app/per.pqy.apktool*/*.apk ] || rm -rf /data/data/per.pqy.apktool
@@ -142,210 +168,40 @@ cp -f /system/media/theme/default/powermenu powermenu
 
 mkdir -p $PATCHDIR/powermenu.out
 
-unzip -o $PATCHDIR/powermenu "*" -d $PATCHDIR/powermenu.out
+echo "Decompressing powermenu..."
+unzip -o $PATCHDIR/powermenu "*" -d $PATCHDIR/powermenu.out >> $PATCHDIR/miui-powermenu-patcher.log 2>&1
 
 patch_msg manifest $MANIFEST_N
 
-sed -i "s|+#shutdown_dialog.visibility|+#shutdown_dialog.visibility+#recovery_dialog.visibility+#fastboot_dialog.visibility|" $MANIFESTFILE
+patch_manifest_1
 
 patch_msg
 
-DATA='            <VariableCommand name="shutdown_label_flag" expression="0" condition="#shutdown_dialog.visibility"/>
-            <Command target="recovery_dialog.visibility" value="false" delay="600" condition="#recovery_dialog.visibility"/>
-            <Command target="recovery_btn.visibility" value="true" delay="600" condition="#recovery_dialog.visibility"/>
-            <VariableCommand name="recovery_label_flag" expression="0" condition="#recovery_dialog.visibility"/>
-            <Command target="fastboot_dialog.visibility" value="false" delay="600" condition="#fastboot_dialog.visibility"/>
-            <Command target="fastboot_btn.visibility" value="true" delay="600" condition="#fastboot_dialog.visibility"/>
-            <VariableCommand name="fastboot_label_flag" expression="0" condition="#fastboot_dialog.visibility"/>'
-
-cp -f $MANIFESTFILE ${MANIFESTFILE}.bak
-
-awk -v r="$DATA" '{gsub(/            <VariableCommand name=\"shutdown_label_flag\" expression=\"0\" condition=\"#shutdown_dialog.visibility\"\/>/,r)}1' ${MANIFESTFILE}.bak > $MANIFESTFILE
+patch_manifest_2
 
 patch_msg
 
-sed -i 's|<Var name="uy" expression="#view_height/.*" />|<Var name="uy" expression="#view_height/2-400" />|' $MANIFESTFILE
-
-DATA="    <Var name=\"dy\" expression=\"#view_height/2-40\" />
-    <Var name=\"ny\" expression=\"#view_height/2+320\" />"
-
-cp -f $MANIFESTFILE ${MANIFESTFILE}.bak
-
-awk -v r="$DATA" '{gsub(/    <Var name=\"dy\" expression=\"#view_height\/2\+180\" \/>/,r)}1' ${MANIFESTFILE}.bak > $MANIFESTFILE
+patch_manifest_3
 
 patch_msg
 
-DATA='    <Var name="shutdown_label_flag" expression="1" const="true" />
-    <Var name="recovery_label_flag" expression="1" const="true" />
-    <Var name="fastboot_label_flag" expression="1" const="true" />'
-
-cp -f $MANIFESTFILE ${MANIFESTFILE}.bak
-
-awk -v r="$DATA" '{gsub(/    <Var name=\"shutdown_label_flag\" expression=\"1\" const=\"true\" \/>/,r)}1' ${MANIFESTFILE}.bak > $MANIFESTFILE
+patch_manifest_4
 
 patch_msg
 
-DATA='        <Text x="#rx" y="#dy+#label_space" color="#99ffffff" size="36" align="center" alignV="center" text="@label_shutdown" />
-    </Group>
-	<!-- recovery -->
-    <Group name="recovery_btn" x="-#pos_offset_x*#ani_factor_inout" y="#pos_offset_y*#ani_factor_inout">
-        <Button x="#lx-#circle_r" y="#ny-#circle_r" w="#btn_flag*#circle_r*2" h="#circle_r*2" contentDescriptionExp="@label_recovery">
-            <Normal>
-                <Circle x="#lx" y="#ny" r="#circle_r" strokeColor="#4cffffff" fillColor="#00ffffff" weight="2" strokeAlign="inner" />
-            </Normal>
-            <Pressed>
-                <Circle x="#lx" y="#ny" r="#circle_r" strokeColor="#4cffffff" fillColor="#16ffffff" weight="2" strokeAlign="inner" />
-            </Pressed>
-            <Image x="#lx" y="#ny" align="center" alignV="center" src="recovery.png" />
-            <Triggers>
-                <Trigger action="down">
-                    <Command target="blank_area.visibility" value="false" />
-                </Trigger>
-                <Trigger action="up,cancel">
-                    <Command target="blank_area.visibility" value="true" />
-                </Trigger>
-                <Trigger action="up">
-                    <VariableCommand name="btn_flag" expression="0" />
-                    <VariableCommand name="dialog_btn_flag" expression="0"/>
-                    <VariableCommand name="inout_flag" expression="0" />
-                    <VariableCommand name="enter_flag" expression="1" />
-                    <VariableCommand name="recovery_label_flag" expression="1"/>
-                    <Command target="ani_timer_inout.animation" value="play" />
-                    <Command target="ani_timer_enter.animation" value="play" />
-                    <Command target="recovery_dialog.visibility" value="true" />
-                    <Command target="recovery_btn.visibility" value="false" />
-                </Trigger>
-            </Triggers>
-        </Button>
-        <Text x="#lx" y="#ny+#label_space" color="#99ffffff" size="36" align="center" alignV="center" text="@label_recovery" />
-    </Group>
-	<!-- fastboot -->
-    <Group name="fastboot_btn" x="#pos_offset_x*#ani_factor_inout" y="#pos_offset_y*#ani_factor_inout">
-        <Button x="#rx-#circle_r" y="#ny-#circle_r" w="#btn_flag*#circle_r*2" h="#circle_r*2" contentDescriptionExp="@label_fastboot">
-            <Normal>
-                <Circle x="#rx" y="#ny" r="#circle_r" strokeColor="#4cffffff" fillColor="#00ffffff" weight="2" strokeAlign="inner" />
-            </Normal>
-            <Pressed>
-                <Circle x="#rx" y="#ny" r="#circle_r" strokeColor="#4cffffff" fillColor="#16ffffff" weight="2" strokeAlign="inner" />
-            </Pressed>
-            <Image x="#rx" y="#ny" align="center" alignV="center" src="fastboot.png" />
-            <Triggers>
-                <Trigger action="down">
-                    <Command target="blank_area.visibility" value="false" />
-                </Trigger>
-                <Trigger action="up,cancel">
-                    <Command target="blank_area.visibility" value="true" />
-                </Trigger>
-                <Trigger action="up">
-                    <VariableCommand name="btn_flag" expression="0" />
-                    <VariableCommand name="dialog_btn_flag" expression="0"/>
-                    <VariableCommand name="inout_flag" expression="0" />
-                    <VariableCommand name="enter_flag" expression="1" />
-                    <VariableCommand name="fastboot_label_flag" expression="1"/>
-                    <Command target="ani_timer_inout.animation" value="play" />
-                    <Command target="ani_timer_enter.animation" value="play" />
-                    <Command target="fastboot_dialog.visibility" value="true" />
-                    <Command target="fastboot_btn.visibility" value="false" />
-                </Trigger>
-            </Triggers>
-        </Button>
-        <Text x="#rx" y="#ny+#label_space" color="#99ffffff" size="36" align="center" alignV="center" text="@label_fastboot" />'
-
-cp -f $MANIFESTFILE ${MANIFESTFILE}.bak
-
-awk -v r="$DATA" '{gsub(/        <Text x=\"#rx\" y=\"#dy\+#label_space\" color=\"#99ffffff\" size=\"36\" align=\"center\" alignV=\"center\" text=\"@label_shutdown\" \/>/,r)}1' ${MANIFESTFILE}.bak > $MANIFESTFILE
+patch_manifest_5
 
 patch_msg
 
-DATA='        <Text name="shutdown_label" x="#view_width/2" y="#view_height-100" w="#view_width-20" multiLine="true" color="#80ffffff" size="36" alpha="255*(1-#ani_factor_enter)" alignH="center" alignV="bottom" textExp="@shutdown_info" />
-    </Group>
-	<!-- recovery alert dialog -->
-    <Group name="recovery_dialog" visibility="false">
-        <Button x="#view_width/2-#big_circle_r+(#lx-#view_width/2)*#ani_factor_enter" y="#confirm_y-#big_circle_r+(#ny-#confirm_y)*#ani_factor_enter" w="lt(#ani_factor_enter,0.2)*#big_circle_r*2" h="#big_circle_r*2" contentDescriptionExp="@label_alert_recovery">
-            <Normal>
-                <Circle x="#view_width/2+(#lx-#view_width/2)*#ani_factor_enter" y="#confirm_y+(#ny-#confirm_y)*#ani_factor_enter" r="#big_circle_r" scale="(1-0.29*#ani_factor_enter)*#ani_gone_dialogicon" strokeColor="#4cffffff" fillColor="#00ffffff" weight="2" strokeAlign="inner" />
-            </Normal>
-            <Pressed>
-                <Circle x="#view_width/2+(#lx-#view_width/2)*#ani_factor_enter" y="#confirm_y+(#ny-#confirm_y)*#ani_factor_enter" r="#big_circle_r" scale="(1-0.29*#ani_factor_enter)*#ani_gone_dialogicon" strokeColor="#4cffffff" fillColor="#16ffffff" weight="2" strokeAlign="inner" />
-            </Pressed>
-            <Image name="recovery_big" x="#view_width/2+(#lx-#view_width/2)*#ani_factor_enter" y="#confirm_y+(#ny-#confirm_y)*#ani_factor_enter" align="center" alignV="center" pivotX="#recovery_big.bmp_width/2" pivotY="#recovery_big.bmp_height/2" scale="(1-0.2523*#ani_factor_enter)*#ani_gone_dialogicon" src="recovery_big.png" loadSync="true"/>
-            <Triggers>
-                <Trigger action="down">
-                    <Command target="blank_area.visibility" value="false" />
-                </Trigger>
-                <Trigger action="up,cancel">
-                    <Command target="blank_area.visibility" value="true" />
-                </Trigger>
-                <Trigger action="up">
-                    <VariableCommand name="dialog_btn_flag" expression="0" />
-                    <Command target="ani_gone_dialogicon.animation" value="play" />
-                    <Command target="ani_gone_dialogtext.animation" value="play" delay="100" />
-                    <Command target="ani_gone_dialogcancel.animation" value="play" delay="200" />
-                    <ExternCommand command="dismiss" delay="700" />
-                    <ExternCommand command="recovery" delay="700" />  <!-- TODO 700- to make sure reboot can be received -->
-                </Trigger>
-            </Triggers>
-        </Button>
-        <Text name="recovery_confirm_label" x="#view_width/2+(#lx-#view_width/2)*#ani_factor_enter" y="#confirm_label_y+(#ny+#label_space-#confirm_label_y)*#ani_factor_enter" color="#99ffffff" size="40" pivotX="#recovery_confirm_label.text_width/2" pivotY="#recovery_confirm_label.text_height/2" scale="(1-0.11*#ani_factor_enter)*#ani_gone_dialogtext" align="center" alignV="center" textExp="ifelse(#recovery_label_flag,@label_alert_recovery,@label_recovery)" />
-    </Group>
-	<!-- fastboot alert dialog -->
-    <Group name="fastboot_dialog" visibility="false">
-        <Button x="#view_width/2-#big_circle_r+(#rx-#view_width/2)*#ani_factor_enter" y="#confirm_y-#big_circle_r+(#ny-#confirm_y)*#ani_factor_enter" w="lt(#ani_factor_enter,0.2)*#big_circle_r*2" h="#big_circle_r*2" contentDescriptionExp="@label_alert_fastboot">
-            <Normal>
-                <Circle x="#view_width/2+(#rx-#view_width/2)*#ani_factor_enter" y="#confirm_y+(#ny-#confirm_y)*#ani_factor_enter" r="#big_circle_r" scale="(1-0.29*#ani_factor_enter)*#ani_gone_dialogicon" strokeColor="#4cffffff" fillColor="#00ffffff" weight="2" strokeAlign="inner" />
-            </Normal>
-            <Pressed>
-                <Circle x="#view_width/2+(#rx-#view_width/2)*#ani_factor_enter" y="#confirm_y+(#ny-#confirm_y)*#ani_factor_enter" r="#big_circle_r" scale="(1-0.29*#ani_factor_enter)*#ani_gone_dialogicon" strokeColor="#4cffffff" fillColor="#16ffffff" weight="2" strokeAlign="inner" />
-            </Pressed>
-            <Image name="fastboot_big" x="#view_width/2+(#rx-#view_width/2)*#ani_factor_enter" y="#confirm_y+(#ny-#confirm_y)*#ani_factor_enter" align="center" alignV="center" pivotX="#fastboot_big.bmp_width/2" pivotY="#fastboot_big.bmp_height/2" scale="(1-0.2743*#ani_factor_enter)*#ani_gone_dialogicon" src="fastboot_big.png" loadSync="true"/>
-            <Triggers>
-                <Trigger action="down">
-                    <Command target="blank_area.visibility" value="false" />
-                </Trigger>
-                <Trigger action="up,cancel">
-                    <Command target="blank_area.visibility" value="true" />
-                </Trigger>
-                <Trigger action="up">
-                    <VariableCommand name="dialog_btn_flag" expression="0" />
-                    <Command target="ani_gone_dialogicon.animation" value="play" />
-                    <Command target="ani_gone_dialogtext.animation" value="play" delay="100" />
-                    <Command target="ani_gone_dialogcancel.animation" value="play" delay="200" />
-                    <ExternCommand command="dismiss" delay="700" />
-                    <ExternCommand command="fastboot" delay="700" />
-                </Trigger>
-            </Triggers>
-        </Button>
-        <Text name="fastboot_confirm_label" x="#view_width/2+(#rx-#view_width/2)*#ani_factor_enter" y="#confirm_label_y+(#ny+#label_space-#confirm_label_y)*#ani_factor_enter" color="#99ffffff" size="40" pivotX="#fastboot_confirm_label.text_width/2" pivotY="#fastboot_confirm_label.text_height/2" scale="(1-0.11*#ani_factor_enter)*#ani_gone_dialogtext" align="center" alignV="center" textExp="ifelse(#fastboot_label_flag,@label_alert_fastboot,@label_fastboot)" />'
+patch_manifest_6
 
-cp -f $MANIFESTFILE ${MANIFESTFILE}.bak
+patch_msg
 
-awk -v r="$DATA" '{gsub(/        <Text name=\"shutdown_label\" x=\"#view_width\/2\" y=\"#view_height\-100\" w=\"#view_width\-20\" multiLine=\"true\" color=\"#80ffffff\" size=\"36\" alpha=\"255\*\(1\-#ani_factor_enter\)\" alignH=\"center\" alignV=\"bottom\" textExp=\"@shutdown_info\" \/>/,r)}1' ${MANIFESTFILE}.bak > $MANIFESTFILE
+patch_manifest_7
 
 patch_msg
 
 rm -f ${MANIFESTFILE}.bak
-
-patch_strings() {
-    STRINGSFILE=$PATCHDIR/powermenu.out/strings/strings$1.xml
-
-    DATA="    <string name=\"label_shutdown\">$2</string>
-    <string name=\"label_recovery\">Recovery</string>
-    <string name=\"label_fastboot\">Fastboot</string>"
-
-    cp -f $STRINGSFILE ${STRINGSFILE}.bak
-
-    awk -v r="$DATA" "{gsub(/    <string name=\"label_shutdown\">$2<\/string>/,r)}1" ${STRINGSFILE}.bak > $STRINGSFILE
-
-    DATA="    <string name=\"label_alert_shutdown\">$3</string>
-    <string name=\"label_alert_recovery\">$4</string>
-    <string name=\"label_alert_fastboot\">$5</string>"
-
-    cp -f $STRINGSFILE ${STRINGSFILE}.bak
-
-    awk -v r="$DATA" "{gsub(/    <string name=\"label_alert_shutdown\">$3<\/string>/,r)}1" ${STRINGSFILE}.bak > $STRINGSFILE
-
-    rm -f ${STRINGSFILE}.bak
-}
 
 patch_msg strings $STRINGS_N
 # patching english strings
@@ -357,6 +213,7 @@ patch_strings "_es_ES" "Apagar" "Toque para apagar" "Toque para reiniciar al rec
 
 patch_msg
 
+echo "Adding new images to powermenu..."
 cp -f recovery.png powermenu.out/
 cp -f recovery_big.png powermenu.out/
 cp -f fastboot.png powermenu.out/
@@ -364,15 +221,33 @@ cp -f fastboot_big.png powermenu.out/
 
 cd $PATCHDIR/powermenu.out
 
-$PATCHDIR/7za a -mx9 -tzip powermenu.zip *
+echo "Recompressing powermenu..."
+$PATCHDIR/7za a -mx9 -tzip powermenu.zip * >> $PATCHDIR/miui-powermenu-patcher.log 2>&1
 
+echo "Mounting system (rw)..."
+
+mount -w -o remount /system
+
+echo "Copying patched files to system..."
 cp -f $PATCHDIR/android.policy.jar.out/dist/android.policy.jar /system/framework/android.policy.jar
 
 cp -f powermenu.zip /system/media/theme/default/powermenu
 
+echo "Mounting system (ro)..."
+
+mount -r -o remount /system
+
+# DarthJabba9 - copy patched files to another place
+echo "Backing up patched files..."
+cp -f $PATCHDIR/android.policy.jar.out/dist/android.policy.jar $PATCHDIR/$ANDROID_VER/patched/system/framework/android.policy.jar
+cp -f powermenu.zip $PATCHDIR/$ANDROID_VER/patched/system/media/theme/default/powermenu
+# DarthJabba9 - end() #3
+
 cd $PATCHDIR
 
 rm -rf android.policy.jar.out powermenu.out
+rm -f android.policy.jar powermenu
+
+echo "Done"
 
 exit
-

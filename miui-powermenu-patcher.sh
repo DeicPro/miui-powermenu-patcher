@@ -1,6 +1,7 @@
 #!/system/bin/sh
 # by xda@Deic
 
+$SCRIPT_DIR=$0
 PATCHDIR=/data/miui-powermenu-patcher
 SMALIFILE=$PATCHDIR/android.policy.jar.out/smali/com/android/internal/policy/impl/MiuiGlobalActions\$1.smali
 MANIFESTFILE=$PATCHDIR/powermenu.out/manifest.xml
@@ -8,7 +9,7 @@ SMALI_N=1
 MANIFEST_N=7
 STRINGS_N=2
 BIN_UNZIP=0
-START_LINE=270
+START_LINE=404
 
 # busybox aliases (in case of no symlinks)
 alias basename="busybox basename"
@@ -19,22 +20,16 @@ alias unzip="busybox unzip"
 alias sed="busybox sed"
 alias awk="busybox awk"
 
+# get current Android release for backup of stock files
+ANDROID_VER=$(getprop "ro.build.version.incremental")
+[ -z "$ANDROID_VER" ] && ANDROID_VER=old_android
+
 # display message and terminate script (optionally supply exit code)
 Abort()
 {
   echo "$1"
   exit $2
-}
-
-# return the full path of the running script
-RunningProg()
-{
-local n=$(basename $0)
-local d=$(dirname $0)
-  [ "$d" = "." ] && echo $PWD/$n || echo $0
-}
-
-SCRIPT_DIR=$(RunningProg)
+} # Abort()
 
 # return location of embedded code + 1 - or zero if code not found
 FindEmbeddedCode()
@@ -46,16 +41,118 @@ FindEmbeddedCode()
     local c=1 # increment count
     echo $(( n + c ))
  } || echo 0
-}
+} # FindEmbeddedCode()
 
-# set START_LINE automatically if the embedded code is found
-tmp=$(FindEmbeddedCode)
-[ ! "$tmp" = "0" ] && START_LINE=$tmp
+# return the full path of the running script
+RunningProg()
+{
+local n=$(basename $0)
+local d=$(dirname $0)
+  [ "$d" = "." ] && echo $PWD/$n || echo $0
+} # RunningProg()
 
-# allow user to supply patchdir from command line, with "-d <dir>"
-[ "$1" = "-d" ] && [ -n "$2" ] && PATCHDIR=$1
+# backup the stock files (if not already backed up)
+Backup_StockFiles()
+{
+  # create dirs for stock backup
+  mkdir -p $PATCHDIR/$ANDROID_VER/stock/system/framework/
+  [ ! -d $PATCHDIR/$ANDROID_VER/stock/system/framework/ ] && {
+      echo "Error creating directory: $PATCHDIR/$ANDROID_VER/stock/system/framework/"
+      return  
+  }
+  
+  mkdir -p $PATCHDIR/$ANDROID_VER/stock/system/media/theme/default/
+  [ ! -d $PATCHDIR/$ANDROID_VER/stock/system/media/theme/default/ ] && {
+      echo "Error creating directory: $PATCHDIR/$ANDROID_VER/stock/system/media/theme/default/"
+      return  
+  }
 
-patch_msg() {
+  # backup 
+  echo "Backing up stock files (if not already backed up) ..."
+  [ ! -f $PATCHDIR/$ANDROID_VER/stock/system/framework/android.policy.jar ] && {
+      cp -af /system/framework/android.policy.jar $PATCHDIR/$ANDROID_VER/stock/system/framework/
+  }
+
+  [ ! -f $PATCHDIR/$ANDROID_VER/stock/system/media/theme/default/powermenu ] && {
+      cp -af /system/media/theme/default/powermenu $PATCHDIR/$ANDROID_VER/stock/system/media/theme/default/
+  }
+  
+  echo "Finished backing up stock files."
+  
+} # Backup_StockFiles()
+
+# backup the patched files
+Backup_PatchedFiles()
+{
+
+   [ ! -d $PATCHDIR/powermenu.out ] && {
+       echo "Invalid directory: $PATCHDIR/powermenu.out"
+       return   
+   }
+   
+   mkdir -p $PATCHDIR/$ANDROID_VER/patched/system/framework/
+   [ ! -d $PATCHDIR/$ANDROID_VER/patched/system/framework/ ] && {
+       echo "Error creating directory: $PATCHDIR/$ANDROID_VER/patched/system/framework/"
+       return   
+   }
+   
+   mkdir -p $PATCHDIR/$ANDROID_VER/patched/system/media/theme/default/
+   [ ! -d $PATCHDIR/$ANDROID_VER/patched/system/media/theme/default/ ] && {
+       echo "Error creating directory: $PATCHDIR/$ANDROID_VER/patched/system/media/theme/default/"
+       return   
+   }
+
+   echo "Backing up the patched files..."
+   local xdir=$(pwd)
+   cd $PATCHDIR/powermenu.out
+   cp -f $PATCHDIR/android.policy.jar.out/dist/android.policy.jar $PATCHDIR/$ANDROID_VER/patched/system/framework/android.policy.jar
+   cp -f powermenu.zip $PATCHDIR/$ANDROID_VER/patched/system/media/theme/default/powermenu
+   cd $xdir
+   echo "Finished backing up the patched files..."
+
+} # Backup_PatchedFiles()
+
+# restore backup - either of stock, or already-completed patch
+# no argument = restore backed up stock files
+# send "patched" to this function to choose the already-completed patch
+Restore_Backup()
+{
+  local BDIR="stock"
+  [ "$1" = "patched" ] && BDIR=$1
+  
+  # some error checking
+  [ ! -d $PATCHDIR ] && {
+      echo "Invalid directory: \"$PATCHDIR\""
+      return
+  }
+  
+  # check for files - restore all, or nothing
+  [ ! -f $PATCHDIR/$ANDROID_VER/$BDIR/system/framework/android.policy.jar ] && {
+      echo "No android.policy.jar $BDIR backup"
+      return
+  }
+  
+  [ ! -f $PATCHDIR/$ANDROID_VER/$BDIR/system/media/theme/default/powermenu ] && {
+      echo "No powermenu $BDIR backup"
+      return
+  }
+
+  # if we get here, all relevant backup files exist
+  echo "Mounting system (rw)..."
+  mount -w -o remount /system
+
+  echo "Restoring $BDIR files ..."
+  cp -af $PATCHDIR/$ANDROID_VER/$BDIR/system/framework/android.policy.jar /system/framework/android.policy.jar
+  cp -af $PATCHDIR/$ANDROID_VER/$BDIR/system/media/theme/default/powermenu /system/media/theme/default/powermenu
+
+  echo "Mounting system (ro)..."
+  mount -r -o remount /system
+
+  echo "Finished restoring $BDIR files"
+} # Restore_Backup()
+
+patch_msg() 
+{
     [ "$FIRST_C" ] && COUNT=$(($COUNT+1)) || { FILE_I=$1; FILE_N=$2; COUNT=0; }
 
     echo "Patching $FILE_I $COUNT/$FILE_N..."
@@ -63,39 +160,24 @@ patch_msg() {
     FIRST_C=1
 
     [ "$COUNT" == "$FILE_N" ] && unset FIRST_C
-}
+} # patch_msg()
 
+# the main function to patch the powermenu
+Patch_PowerMenu()
+{
 echo "Creating directories..."
 mkdir -p $PATCHDIR
 
 # some error checking
 [ ! -d $PATCHDIR ] && Abort "Error creating \"$PATCHDIR\"" "1"
-
 cd $PATCHDIR
-
 echo "" > $PATCHDIR/miui-powermenu-patcher.log
 
-## DarthJabba9 - get current Android release for backup, backup stock, and prepare for patch
-ANDROID_VER=$(getprop "ro.build.version.incremental")
-[ -z "$ANDROID_VER" ] && ANDROID_VER=old_android
-mkdir -p $PATCHDIR/$ANDROID_VER/stock/system/framework/
-mkdir -p $PATCHDIR/$ANDROID_VER/stock/system/media/theme/default/
+# DarthJabba9; backup stock files (if not already backed up)
+Backup_StockFiles
+# DarthJabba9 - end()
 
-# backup stock files
-echo "Backing up files..."
-[ ! -f $PATCHDIR/$ANDROID_VER/stock/system/framework/android.policy.jar ] && {
-  cp -af /system/framework/android.policy.jar $PATCHDIR/$ANDROID_VER/stock/system/framework/
-}
-
-[ ! -f $PATCHDIR/$ANDROID_VER/stock/system/media/theme/default/powermenu ] && {
-  cp -af /system/media/theme/default/powermenu $PATCHDIR/$ANDROID_VER/stock/system/media/theme/default/
-}
-
-# create directories for patched files
-mkdir -p $PATCHDIR/$ANDROID_VER/patched/system/framework/
-mkdir -p $PATCHDIR/$ANDROID_VER/patched/system/media/theme/default/
-# DarthJabba9 - end() #1
-
+# continue 
 [ -f $PATCHDIR/wget ] || {
     # line where embedded file code start
     echo "Extracting embedded data..."
@@ -112,7 +194,7 @@ mkdir -p $PATCHDIR/$ANDROID_VER/patched/system/media/theme/default/
 [ ! -x $PATCHDIR/openjdk/bin/java ] || [ ! -d $PATCHDIR/openjdk/lib/arm ] && {
     BIN_ZIP=/storage/sdcard1/bin.zip
     [ -f $BIN_ZIP ] && {
-        echo "Extracting environment..."
+        echo "Extracting environment from existing bin.zip..."
         unzip -o $BIN_ZIP "*" >> $PATCHDIR/miui-powermenu-patcher.log 2>&1
         chmod -R 755 $PATCHDIR
     }
@@ -121,7 +203,7 @@ mkdir -p $PATCHDIR/$ANDROID_VER/patched/system/media/theme/default/
 [ -x $PATCHDIR/openjdk/bin/java ] && [ -d $PATCHDIR/openjdk/lib/arm ] && {
     BIN_UNZIP=1
 }
-# DarthJabba9 - end() #2
+# DarthJabba9 - end()
 
 [ "$BIN_UNZIP" == 0 ] && {
     echo "Downloading environment..."
@@ -141,7 +223,7 @@ $PATCHDIR/wget -nv --no-check-certificate -O $PATCHDIR/update.sh https://raw.git
 [ "$version" ] && [ "$lastest_version" ] && [ "$lastest_version" != "$version" ] || [ ! -f $PATCHDIR/patch.sh ] && {
     echo "Downloading patches..."
     $PATCHDIR/wget -nv --no-check-certificate -O $PATCHDIR/patch.sh https://raw.githubusercontent.com/DeicPro/miui-powermenu-patcher/master/patch.sh >> $PATCHDIR/miui-powermenu-patcher.log 2>&1
-    source patch.sh
+    source $PATCHDIR/patch.sh
 }
 
 ## decompile
@@ -254,16 +336,68 @@ echo "Mounting system (ro)..."
 mount -r -o remount /system
 
 # DarthJabba9 - copy patched files to another place
-echo "Backing up patched files..."
-cp -f $PATCHDIR/android.policy.jar.out/dist/android.policy.jar $PATCHDIR/$ANDROID_VER/patched/system/framework/android.policy.jar
-cp -f powermenu.zip $PATCHDIR/$ANDROID_VER/patched/system/media/theme/default/powermenu
-# DarthJabba9 - end() #3
+Backup_PatchedFiles
+# DarthJabba9 - end()
 
 cd $PATCHDIR
 
 rm -rf android.policy.jar.out powermenu.out
 rm -f android.policy.jar powermenu
 
-echo "Done"
+echo "Finished patching the stock powermenu"
+echo ""
 
-exit
+} # Patch_PowerMenu()
+
+# display a menu so the user can choose
+Show_Menu()
+{
+  PS3='Select [press ENTER if the menu is not visible]: '
+  local Item1="Backup the stock powermenu"
+  local Item2="Patch the stock powermenu"
+  local Item3="Restore backup (Stock)"
+  local Item4="Restore backup (previously patched)"
+  local Item5="Quit"
+
+  options=("$Item1" "$Item2" "$Item3" "$Item4" "$Item5")
+  select opt in "${options[@]}"
+  do
+     case $opt in
+        "$Item1")
+            Backup_StockFiles
+            echo ""
+            ;;
+        "$Item2")
+            Patch_PowerMenu
+            echo ""
+            ;;
+        "$Item3")
+            Restore_Backup "stock"
+            echo ""
+            ;;
+        "$Item4")
+            Restore_Backup "patched"
+            echo ""
+            ;;
+        "$Item5")
+            exit
+            ;;
+        *) echo Invalid option;;
+    esac
+  done
+} # Show_Menu()
+
+#**** Main() ****
+  SCRIPT_DIR=$(RunningProg)
+
+  # allow user to supply patchdir from command line, with "-d <dir>"
+  [ "$1" = "-d" ] && [ -n "$2" ] && PATCHDIR=$2
+
+  tmp=$(FindEmbeddedCode)
+  [ ! "$tmp" = "0" ] && START_LINE=$tmp
+
+  # display the menu
+  Show_Menu
+
+  exit # just in case!
+#embedded file below

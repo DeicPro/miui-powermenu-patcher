@@ -1,7 +1,7 @@
 #!/system/bin/sh
 # by xda@Deic
 
-$SCRIPT_DIR=$0
+SCRIPT_DIR=$0
 PATCHDIR=/data/miui-powermenu-patcher
 SMALIFILE=$PATCHDIR/android.policy.jar.out/smali/com/android/internal/policy/impl/MiuiGlobalActions\$1.smali
 MANIFESTFILE=$PATCHDIR/powermenu.out/manifest.xml
@@ -9,7 +9,7 @@ SMALI_N=1
 MANIFEST_N=7
 STRINGS_N=2
 BIN_UNZIP=0
-START_LINE=404
+START_LINE=392
 
 # busybox aliases (in case of no symlinks)
 alias basename="busybox basename"
@@ -228,11 +228,11 @@ $PATCHDIR/wget -nv --no-check-certificate -O $PATCHDIR/update.sh https://raw.git
 
 ## decompile
 echo "Preparing environment..."
-if [ ! -f /data/app/per.pqy.apktool*/*.apk ]; then
+[ ! -f /data/app/per.pqy.apktool*/*.apk ] && {
     mkdir -p /data/data/per.pqy.apktool/apktool/openjdk/lib
     cp -f openjdk/lib/ld.so /data/data/per.pqy.apktool/apktool/openjdk/lib/ld.so
     chmod -R 755 /data/data/per.pqy.apktool
-fi
+}
 
 cp -f /system/framework/android.policy.jar android.policy.jar
 
@@ -345,46 +345,34 @@ rm -rf android.policy.jar.out powermenu.out
 rm -f android.policy.jar powermenu
 
 echo "Finished patching the stock powermenu"
-echo ""
+echo
 
 } # Patch_PowerMenu()
 
 # display a menu so the user can choose
 Show_Menu()
 {
-  PS3='Select [press ENTER if the menu is not visible]: '
-  local Item1="Backup the stock powermenu"
-  local Item2="Patch the stock powermenu"
-  local Item3="Restore backup (Stock)"
-  local Item4="Restore backup (previously patched)"
-  local Item5="Quit"
+    PS3='Select: '
+    local Item1="Patch the stock powermenu"
+    local Item2="Backup the stock powermenu"
+    local Item3="Restore backup (Stock)"
+    local Item4="Restore backup (previously patched)"
+    local Item5="Quit"
+    options=("$Item1" "$Item2" "$Item3" "$Item4" "$Item5")
 
-  options=("$Item1" "$Item2" "$Item3" "$Item4" "$Item5")
-  select opt in "${options[@]}"
-  do
-     case $opt in
-        "$Item1")
-            Backup_StockFiles
-            echo ""
-            ;;
-        "$Item2")
-            Patch_PowerMenu
-            echo ""
-            ;;
-        "$Item3")
-            Restore_Backup "stock"
-            echo ""
-            ;;
-        "$Item4")
-            Restore_Backup "patched"
-            echo ""
-            ;;
-        "$Item5")
-            exit
-            ;;
-        *) echo Invalid option;;
-    esac
-  done
+    while :; do
+        select opt in "${options[@]}"; do
+            case $opt in
+                "$Item1") Patch_PowerMenu; echo;;
+                "$Item2") Backup_StockFiles; echo;;
+                "$Item3") Restore_Backup "stock"; echo;;
+                "$Item4") Restore_Backup "patched"; echo;;
+                "$Item5") exit;;
+                *) echo "Invalid option";;
+            esac
+            break
+        done
+    done
 } # Show_Menu()
 
 #**** Main() ****
